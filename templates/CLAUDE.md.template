@@ -1,0 +1,47 @@
+# {{PROJECT_NAME}} CLAUDE.md
+
+## Project Overview
+<!-- Describe your project here -->
+
+## Architecture
+<!-- Key directories, tech stack, deployment target -->
+
+## Rules
+
+### Root Cause Resolution (from JEPO)
+> Symptom -> Root Cause -> Structural Fix. Patch-only fixes create repeat issues.
+
+1. **Identify root cause first**: Why did this issue occur? Structural origin?
+2. **Prevent recurrence**: After fix, add a rule to CLAUDE.md (same issue blocked on second occurrence)
+3. **Single source of truth**: Same value read from one config (no duplicate hardcoding)
+4. **Explicit error handling**: Always handle errors explicitly -- bare `except: pass` masks bugs
+5. **New feature = new rule**: When adding features, document what could break them
+6. **Regression prevention**:
+   - List all existing features before changes
+   - Identify any weakened/removed features
+   - If any exist -> inform user first, get confirmation
+   - Only proceed after confirmation
+
+### Document Sync (from JEPO)
+> CLAUDE.md numbers must always match reality.
+
+- Agent count, skill count, hook count: update on add/remove
+- Server IPs/ports: single source in `~/.claude/config.json`
+
+## Output Quality Rules
+- **Numbers required**: Every conclusion needs specific data (N, %, $)
+- **Comparison frame**: Evaluate vs benchmarks/previous/alternatives
+- **Weaknesses first**: Risks before strengths, in more detail
+- **SO WHAT**: After data, always state conclusion + next action
+- **Evidence-based**: Conclusions only with code/API/log evidence
+
+## Project-Specific Rules
+<!-- Add your project rules here -->
+
+## Commands
+<!-- Key commands for build, test, deploy -->
+```bash
+# npm run build
+# npm run test
+# npm run deploy
+```

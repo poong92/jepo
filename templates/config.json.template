@@ -1,0 +1,10 @@
+{
+  "prod_server": "",
+  "prod_ssh_port": "22",
+  "budget": {
+    "daily_limit_usd": 50,
+    "weekly_limit_usd": 250,
+    "throttle_at_pct": 80,
+    "emergency_stop_usd": 100
+  }
+}
