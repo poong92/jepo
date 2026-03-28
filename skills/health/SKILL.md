@@ -1,56 +1,68 @@
 ---
 name: health
-description: System health diagnostics. Checks memory state, Git sync, server status. Use when user asks about system status, health check, or diagnostics.
+description: JEPO 시스템 상태를 진단합니다. 메모리 상태, Git 동기화, MCP 연결, autotrader 서버 상태를 확인합니다. Use when user asks about system status, health check, or "상태 확인".
 context: fork
+agent: infrastructure-monitor
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
-# JEPO Health Check
+# JEPO Health Check v2.4
 
-## Purpose
-Self-diagnostic for system state -- memory/ folder, Git status, server connectivity.
+## 목적
+시스템 상태 자가진단 - memory/ 폴더 상태, Git 상태, autotrader 동기화, 서버 상태 확인
 
-## Diagnostic Items
+> **현재 autotrader 버전**: config_squeeze.py의 VERSION 변수에서 동적으로 확인
+> ```bash
+> grep "^VERSION" ~/Desktop/autotrader/src/live/config_squeeze.py
+> ```
 
-### 1. Memory State (auto-memory)
+## 진단 항목
+
+### 1. 메모리 상태 (auto-memory)
 ```bash
-# Check memory/ folder
+# memory/ 폴더 존재 및 파일 수 확인
 ls -la ~/.claude/memory/ 2>/dev/null && echo "OK" || echo "MISSING"
-# Check MEMORY.md
+# MEMORY.md 존재 확인
 ls -la ~/.claude/MEMORY.md 2>/dev/null && echo "OK" || echo "MISSING"
 ```
 
-### 2. Git Sync Status
+### 2. Git 동기화 상태
 ```bash
 git status --porcelain
 git log -1 --format="%h %s (%cr)"
 ```
 
-### 3. Server Status (if configured)
+### 3. autotrader 동기화 체크
 ```bash
-# Read server from config.json
-PROD_SERVER=$(jq -r '.prod_server // ""' ~/.claude/config.json 2>/dev/null)
-if [ -n "$PROD_SERVER" ]; then
-    PROD_SSH_PORT=$(jq -r '.prod_ssh_port // "22"' ~/.claude/config.json 2>/dev/null)
-    ssh -o ConnectTimeout=3 -p "$PROD_SSH_PORT" "root@$PROD_SERVER" "uptime" 2>&1
-fi
+python3 ~/Desktop/autotrader/scripts/sync_check.py
 ```
 
-### 4. API Status (if configured)
+### 4. autotrader 서버 상태
 ```bash
-DEPLOY_API=$(jq -r '.deploy_api_url // ""' ~/.claude/config.json 2>/dev/null)
-[ -n "$DEPLOY_API" ] && curl -s "$DEPLOY_API/health" | head -1
+ssh -p 2222 root@167.172.81.145 "cd /opt/autotrader && docker-compose logs --tail=10" 2>&1 | tail -15
 ```
 
-## Output Format
+### 5. PRUVIQ API 상태
+```bash
+curl -s https://api.pruviq.com/health | head -1
+curl -s https://pruviq.com/ | head -1
+```
+
+## 출력 형식
 
 ```
-=== JEPO Health Check ===
+=== JEPO Health Check v2.4 ===
 
-[Memory] auto-memory: OK | memory/ folder: N files
-[Git]    branch: main | uncommitted: 0 | last: xxxxx (N hours ago)
-[Server] status: OK / UNREACHABLE
-[API]    status: 200 / ERROR
+[Memory] auto-memory: OK | memory/ 폴더: N개 파일
+[Git]    브랜치: main | uncommitted: 0 | 마지막: xxxxx (N시간 전)
 
-Status: OK / NEEDS ATTENTION
+=== AutoTrader 상태 ===
+[동기화] Docker: vX.X.X | CLAUDE.md: vX.X.X
+[서버]   봇: STOPPED (2026-03-09) | 잔여 포지션 수동 청산 필요
+
+=== PRUVIQ 상태 ===
+[API]    coins_loaded: 549
+[Web]    응답: 200
+
+상태: 정상 / 주의 필요
 ```

@@ -1,18 +1,16 @@
 #!/bin/bash
-# JEPO Cost Tracker -- Token usage tracking + cost calculation
-#
-# Usage: source lib/cost-tracker.sh
-#        log_usage "auto-fix" "claude-opus-4-6" 50000 10000
+# JEPO Cost Tracker v1.0
+# Claude CLI 실행 후 토큰 사용량 파싱 + JSONL 기록
 
 TOKEN_LOG="$HOME/logs/claude-auto/token-usage.jsonl"
 
-# Model pricing ($/1M tokens, adjust as needed)
+# 모델별 비용 ($/1M tokens, 2026-03 기준)
 _model_cost_input() {
     case "$1" in
         *opus*)   echo "15.0" ;;
         *sonnet*) echo "3.0" ;;
         *haiku*)  echo "0.25" ;;
-        *)        echo "3.0" ;;
+        *)        echo "3.0" ;;  # 기본값 sonnet
     esac
 }
 
@@ -25,7 +23,7 @@ _model_cost_output() {
     esac
 }
 
-# Log token usage
+# 토큰 사용량 기록
 # Usage: log_usage <agent_name> <model> <input_tokens> <output_tokens>
 log_usage() {
     local agent="${1:-unknown}"
@@ -41,7 +39,8 @@ log_usage() {
     echo "{\"ts\":\"$ts\",\"agent\":\"$agent\",\"model\":\"$model\",\"input\":$input_tokens,\"output\":$output_tokens,\"cost_usd\":$cost_usd}" >> "$TOKEN_LOG"
 }
 
-# Parse Claude CLI output for token usage
+# stderr에서 토큰 파싱 (Claude CLI 출력 형식)
+# Usage: parse_usage <stderr_file> <agent_name> <model>
 parse_usage() {
     local stderr_file="$1"
     local agent="$2"
@@ -49,19 +48,21 @@ parse_usage() {
 
     [ -f "$stderr_file" ] || return 0
 
+    # Claude CLI는 "Total tokens: input=X output=Y" 또는 비슷한 형식
     local input_tokens=$(grep -oE 'input[_= ]*([0-9]+)' "$stderr_file" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || echo "0")
     local output_tokens=$(grep -oE 'output[_= ]*([0-9]+)' "$stderr_file" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || echo "0")
 
+    # 파싱 실패 시 추정치 (프롬프트 길이 기반)
     if [ "$input_tokens" = "0" ] && [ "$output_tokens" = "0" ]; then
         local prompt_chars=$(wc -c < "$stderr_file" 2>/dev/null || echo "0")
-        input_tokens=$((prompt_chars / 4))
-        output_tokens=$((input_tokens / 5))
+        input_tokens=$((prompt_chars / 4))  # 대략 4자 = 1토큰
+        output_tokens=$((input_tokens / 5)) # 출력은 입력의 ~20%
     fi
 
     log_usage "$agent" "$model" "$input_tokens" "$output_tokens"
 }
 
-# Get today's total cost
+# 오늘 총 비용 조회
 today_cost() {
     python3 -c "
 import json
@@ -80,7 +81,7 @@ print(f'{total:.2f}')
 " 2>/dev/null || echo "0.00"
 }
 
-# Rotate token log (keep last 5000 lines if >10000)
+# 로테이션 (30일 이상 삭제)
 rotate_token_log() {
     [ -f "$TOKEN_LOG" ] || return 0
     local lines=$(wc -l < "$TOKEN_LOG")

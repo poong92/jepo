@@ -1,6 +1,6 @@
 #!/bin/bash
-# JEPO Cost Daily Report
-# Summarizes daily token usage + cost -> notification
+# JEPO Cost Daily Report v1.0
+# 일일 토큰 사용량 + 비용 요약 → Telegram
 
 source "$(dirname "$0")/claude-runner.sh"
 source "$LIB_DIR/cost-tracker.sh"
@@ -12,6 +12,7 @@ log() { echo "$(date +%Y-%m-%dT%H:%M:%S): $*" >> "$LOGFILE"; }
 
 [ -f "$TOKEN_LOG" ] || { log "No token log"; exit 0; }
 
+# 오늘 집계
 report=$(python3 -c "
 import json
 from datetime import date, timedelta
@@ -53,24 +54,25 @@ with open('$TOKEN_LOG') as f:
 
 week_avg = week_total / 7 if week_total > 0 else 0
 
-print(f'JEPO Cost Report {today}')
-print(f'Total: \${total_cost:.2f} (in:{total_input//1000}K out:{total_output//1000}K)')
+print(f'📊 JEPO 비용 리포트 {today}')
+print(f'총: \${total_cost:.2f} (in:{total_input//1000}K out:{total_output//1000}K)')
 print()
 if by_agent:
-    print('By agent:')
+    print('에이전트별:')
     for a, c in sorted(by_agent.items(), key=lambda x: -x[1])[:5]:
         print(f'  {a}: \${c:.2f}')
     print()
 if by_model:
-    print('By model:')
+    print('모델별:')
     for m, c in sorted(by_model.items(), key=lambda x: -x[1]):
         print(f'  {m.split(\"-\")[-1] if \"-\" in m else m}: \${c:.2f}')
-print(f'7-day avg: \${week_avg:.2f}/day')
+print(f'7일 평균: \${week_avg:.2f}/일')
 " 2>/dev/null)
 
 if [ -n "$report" ]; then
-    send_telegram "$report" 2>/dev/null || echo "$report"
+    send_telegram "$report" 2>/dev/null || true
     log "$report"
 fi
 
+# 로그 로테이션
 rotate_token_log

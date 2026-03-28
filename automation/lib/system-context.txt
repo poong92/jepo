@@ -1,0 +1,76 @@
+# JEPO 시스템 컨텍스트 (에러 진단용)
+# 이 파일은 log-error-responder가 Opus 진단 시 참조하는 시스템 지식.
+# 변경 시 project_jepo_system.md와 동기화 필수.
+
+## 인프라
+- Mac Mini M4 Pro, 64GB RAM, macOS Darwin 25.3.0
+- 디스크: 460GB SSD (4% 사용)
+
+## 상시 프로세스 (4개)
+- uvicorn (:8080) — PRUVIQ API, 572코인, 7.4GB RSS, LaunchAgent com.pruviq.api
+- cloudflared (:20241) — CF Tunnel, api.pruviq.com → localhost:8080
+- GitHub Actions Runner — self-hosted, pruviq/pruviq CI/CD
+- continuous-runner.sh (5분) — fix→test→deploy 파이프라인
+
+## 서버
+- PRUVIQ API: localhost:8080 (health: /health)
+- 외부: api.pruviq.com (Cloudflare Tunnel)
+- 웹: pruviq.com (Cloudflare Workers, wrangler deploy)
+- DO 서버: 167.172.81.145:2222 (AutoTrader, 중단 상태)
+- Tailscale: jepo@100.93.138.124
+
+## 배포 흐름
+PR → CI (7 checks) → automerge → refresh_static.sh (20분 cron) → origin/main worktree → npm build → wrangler deploy → deploy-verify (E2E)
+
+## Telegram 알림
+- 토큰 단일 소스: ~/.secrets.env (TELEGRAM_BOT_TOKEN = Alert 봇 8057)
+- claude-auto 스크립트: social/.env via claude-runner.sh
+- cron 스크립트: .secrets.env (jepo_healthcheck, macmini_health, staleness-watch, monitor)
+
+## LaunchAgents (28개 활성) — 주요 주기
+- 5분: pr-review, deploy-verify, continuous, log-error-responder
+- 10분: auto-test, data-healer
+- 15분: auto-deploy
+- 20분: e2e-autofix
+- 30분: auto-fix, agent-health, auth-keepalive, perf-monitor, review-responder
+- 1시간: audit-to-issue
+- 6시간: improve
+- 일일: daily-digest, daily-strategy-ranking, e2e-monitor, sns-daily-post, sns-preflight, knowledge-cleanup, seo-monitor, weekly-audit
+- 2분: telegram-approval-poller
+- 상시: api, tunnel
+
+## Cron (17개) — 주요
+- 5분: monitor.sh (API 빠른 체크)
+- 10분: staleness-watch.sh (데이터 신선도)
+- 15분: macmini_health.sh (인프라)
+- 20분: refresh_static.sh (데이터 갱신 + 배포)
+- 30분: jepo_healthcheck.sh (마스터 24항목)
+- 4시간: update_ohlcv.py (OHLCV 데이터)
+- 매일: full_pipeline, update_performance, backup_do_server, daily_report, backup-critical-data
+
+## 안전 장치
+- budget-guard: Claude 비용 한도
+- tool-failure hook: 3회 연속 실패 시 차단
+- circuit breaker: deploy-verify 롤백 실패 시 잠금
+- session timeout: continuous-runner 1시간 강제 종료
+
+## 알려진 패턴 (오탐 아닌 것)
+- "SHA xxx already verified, skipping" → deploy-verify 정상 동작, 에러 아님
+- "No fixable issues found" → auto-fix 정상, 에러 아님
+- "data-healer complete — all healthy" → 정상
+- "Cannot reach jepo@172.30.1.16" → healthcheck 자기 자신 SSH 오탐 (cron 네트워크 타이밍)
+- "Claude call limit reached" → API 속도 제한, 자동 다음 실행에서 재시도
+
+## 알려진 실제 에러 패턴
+- "Operation not permitted" → macOS 보안 정책 (Full Disk Access 필요)
+- "syntax error near unexpected token" → bash 스크립트 문법 오류 (heredoc/$ 이스케이프 확인)
+- "non-fast-forward" → git push 충돌 (pull --rebase 필요)
+- uvicorn 메모리 급증 → indicator_cache 무한 성장 (재시작 필요)
+- "SIGTERM" / exit -15 → 프로세스 종료 신호 (의도적일 수 있음)
+
+## 경로
+- PRUVIQ 배포 레포: ~/pruviq/ (~/Desktop/pruviq/ 아님!)
+- AutoTrader: ~/Desktop/autotrader/
+- 스크립트: ~/scripts/claude-auto/, ~/scripts/
+- 로그: ~/logs/, ~/logs/claude-auto/
+- config: ~/.claude/config.json (서버 IP/포트 단일 소스)

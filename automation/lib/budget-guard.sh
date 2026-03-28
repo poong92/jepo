@@ -1,20 +1,19 @@
 #!/bin/bash
-# JEPO Budget Guard -- Daily/weekly cost limits + auto throttle
-#
-# Usage: source lib/budget-guard.sh
-#        budget_check "opus"  # Returns: 0=OK, 1=throttled, 2=stopped
+# JEPO Budget Guard v1.0
+# 일일/주간 비용 한도 체크 + 자동 throttle
 
-source "$(dirname "$0")/cost-tracker.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/cost-tracker.sh"
 
 CONFIG_FILE="$HOME/.claude/config.json"
 
-# Read budget settings from config
+# 예산 설정 읽기
 _budget_daily() { python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('budget',{}).get('daily_limit_usd', 50))" 2>/dev/null || echo "50"; }
 _budget_throttle_pct() { python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('budget',{}).get('throttle_at_pct', 80))" 2>/dev/null || echo "80"; }
 _budget_emergency() { python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get('budget',{}).get('emergency_stop_usd', 100))" 2>/dev/null || echo "100"; }
 
-# Budget check -- call before expensive operations
-# Returns: 0=OK, 1=throttled (haiku only), 2=emergency stop
+# 예산 체크 — 호출 전에 실행
+# Returns: 0=OK, 1=throttled(haiku only), 2=stopped
+# Usage: budget_check <model>
 budget_check() {
     local model="${1:-sonnet}"
     local today=$(today_cost)
@@ -28,11 +27,11 @@ budget_check() {
         return 2
     fi
 
-    # Throttle (at configured %, only haiku allowed)
+    # Throttle (80% 도달 시 haiku만 허용)
     local throttle_at=$(python3 -c "print(f'{float($daily_limit) * float($throttle_pct) / 100:.2f}')" 2>/dev/null || echo "40")
     if python3 -c "exit(0 if float('$today') >= float('$throttle_at') else 1)" 2>/dev/null; then
         case "$model" in
-            *haiku*) return 0 ;;
+            *haiku*) return 0 ;;  # haiku는 허용
             *)
                 echo "BUDGET_THROTTLE: \$$today >= \$$throttle_at (${throttle_pct}% of \$$daily_limit). Haiku only."
                 return 1

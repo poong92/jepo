@@ -1,8 +1,8 @@
 #!/bin/bash
-# JEPO Session Start Hook
-# Sets up environment variables, detects project, checks pending sync
-# Event: SessionStart
+# JEPO Session Start Hook v0.12.0
+# 세션 시작 시: 환경 설정 + 프로젝트 감지 + pending sync 알림
 
+# jq 의존성 체크
 if ! command -v jq &>/dev/null; then
     echo "OK"
     exit 0
@@ -11,29 +11,27 @@ fi
 INPUT=$(cat)
 SOURCE=$(echo "$INPUT" | jq -r '.source // "unknown"' 2>/dev/null)
 
-# Source allowlist (injection prevention)
+# source 허용 목록 검증 (injection 방지)
 case "$SOURCE" in
     startup|resume) ;;
     *) SOURCE="unknown" ;;
 esac
 
-# Read server config from single source (config.json)
+# config.json에서 서버 IP 읽기 (단일 소스)
 CONFIG_FILE="$HOME/.claude/config.json"
-PROD_SERVER=$(jq -r '.prod_server // ""' "$CONFIG_FILE" 2>/dev/null)
-PROD_SSH_PORT=$(jq -r '.prod_ssh_port // "22"' "$CONFIG_FILE" 2>/dev/null)
+PROD_SERVER=$(jq -r '.prod_server // "167.172.81.145"' "$CONFIG_FILE" 2>/dev/null)
+PROD_SSH_PORT=$(jq -r '.prod_ssh_port // "2222"' "$CONFIG_FILE" 2>/dev/null)
 
 SYNC_FILE="$HOME/.claude/session-sync/pending.json"
 
 if [ -n "$CLAUDE_ENV_FILE" ]; then
     echo "export JEPO_SESSION_TYPE='$SOURCE'" >> "$CLAUDE_ENV_FILE"
-    echo 'export JEPO_VERSION="1.0.0"' >> "$CLAUDE_ENV_FILE"
+    echo 'export JEPO_VERSION="0.12.0"' >> "$CLAUDE_ENV_FILE"
+    echo 'export JEPO_USER="jplee"' >> "$CLAUDE_ENV_FILE"
+    echo "export JEPO_PROD_SERVER='$PROD_SERVER'" >> "$CLAUDE_ENV_FILE"
+    echo "export JEPO_PROD_SSH_PORT='$PROD_SSH_PORT'" >> "$CLAUDE_ENV_FILE"
 
-    if [ -n "$PROD_SERVER" ]; then
-        echo "export JEPO_PROD_SERVER='$PROD_SERVER'" >> "$CLAUDE_ENV_FILE"
-        echo "export JEPO_PROD_SSH_PORT='$PROD_SSH_PORT'" >> "$CLAUDE_ENV_FILE"
-    fi
-
-    # Pending sync check -- notify Claude via additionalContext
+    # Pending sync 체크 — additionalContext로 Claude에 알림
     if [ -f "$SYNC_FILE" ]; then
         SYNCED=$(jq -r '.synced // false' "$SYNC_FILE" 2>/dev/null)
         if [ "$SYNCED" = "false" ]; then
@@ -47,13 +45,13 @@ if [ -n "$CLAUDE_ENV_FILE" ]; then
         fi
     fi
 
-    # Project detection
+    # 프로젝트 감지
     CWD=$(echo "$INPUT" | jq -r '.cwd // ""' 2>/dev/null)
     [ -z "$CWD" ] && CWD=$(pwd)
     PROJECT_NAME="${CWD##*/}"
     echo "export JEPO_PROJECT='$PROJECT_NAME'" >> "$CLAUDE_ENV_FILE"
 
-    # Agent folder detection
+    # 에이전트 폴더 확인
     AGENTS_DIR="$CWD/.claude/agents"
     if [ -d "$AGENTS_DIR" ]; then
         AGENT_COUNT=$(ls -1 "$AGENTS_DIR"/*.md 2>/dev/null | wc -l | tr -d ' ')
@@ -64,11 +62,13 @@ if [ -n "$CLAUDE_ENV_FILE" ]; then
         echo "export JEPO_AGENT_LIST=\"$AGENT_LIST\"" >> "$CLAUDE_ENV_FILE"
     fi
 
-    # Optional: server health check (customize per project)
-    # if [ "$PROJECT_NAME" = "myproject" ]; then
-    #     STATUS=$(ssh -o ConnectTimeout=3 -p "$PROD_SSH_PORT" "user@$PROD_SERVER" "docker ps --format '{{.Status}}'" 2>/dev/null | head -1)
-    #     [ -n "$STATUS" ] && echo "export JEPO_SERVER_STATUS=\"$STATUS\"" >> "$CLAUDE_ENV_FILE"
-    # fi
+    # autotrader: Docker 상태 체크 (빠르게)
+    if [ "$PROJECT_NAME" = "autotrader" ]; then
+        BOT_STATUS=$(ssh -o ConnectTimeout=3 -o StrictHostKeyChecking=no -p "$PROD_SSH_PORT" "root@$PROD_SERVER" "docker ps --format '{{.Status}}' -f name=autotrader_bot" 2>/dev/null | head -1)
+        if [ -n "$BOT_STATUS" ]; then
+            echo "export JEPO_BOT_STATUS=\"$BOT_STATUS\"" >> "$CLAUDE_ENV_FILE"
+        fi
+    fi
 fi
 
 exit 0
